@@ -13,10 +13,9 @@ function claude {
     $isLogin = $args.Count -ge 2 -and $args[0] -ceq 'auth' -and $args[1] -ceq 'login'
     $isPrint = ($args -ccontains '-p') -or ($args -ccontains '--print')
 
-    if ($isLogin) {
+    if ($isLogin -or $inputPiped) {
         # Login accepts pasted auth codes reliably without a pseudo-terminal.
-        $terminalOptions = @('-i')
-    } elseif ($inputPiped) {
+        # or
         # Stream piped input (e.g. Get-Content log.txt | claude -p 'summarize').
         $terminalOptions = @('-i')
     } elseif ($isPrint -or $outputPiped) {
