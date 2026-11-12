@@ -6,7 +6,14 @@ function build {
         [string]$ImageTag
     )
 
-    docker build --pull --no-cache -f (Join-Path $PSScriptRoot 'claude.dockerfile') -t $ImageTag $PSScriptRoot
+    $buildArgs = @()
+    # Optional pin, e.g. $env:CLAUDE_VERSION = '2.1.322'; .\build.ps1
+    if ($env:CLAUDE_VERSION) {
+        $buildArgs += @('--build-arg', "CLAUDE_VERSION=$env:CLAUDE_VERSION")
+    }
+
+    docker build --pull --no-cache --platform linux/amd64 @buildArgs `
+        -f (Join-Path $PSScriptRoot 'claude.dockerfile') -t $ImageTag $PSScriptRoot
     if ($LASTEXITCODE -ne 0) {
         throw "Docker build failed with exit code $LASTEXITCODE."
     }

@@ -7,11 +7,29 @@ function claude {
         . $script:ClaudeDockerArgsPath
     }
 
-    # Login accepts pasted auth codes reliably without a pseudo-terminal.
-    $terminalOption = '-it'
-    if ($args.Count -ge 2 -and $args[0] -ceq 'auth' -and $args[1] -ceq 'login') {
-        $terminalOption = '-i'
+    $inputPiped = $MyInvocation.ExpectingInput -or [Console]::IsInputRedirected
+    $outputPiped = ($MyInvocation.PipelinePosition -lt $MyInvocation.PipelineLength) -or
+        [Console]::IsOutputRedirected
+    $isLogin = $args.Count -ge 2 -and $args[0] -ceq 'auth' -and $args[1] -ceq 'login'
+    $isPrint = ($args -ccontains '-p') -or ($args -ccontains '--print')
+
+    if ($isLogin) {
+        # Login accepts pasted auth codes reliably without a pseudo-terminal.
+        $terminalOptions = @('-i')
+    } elseif ($inputPiped) {
+        # Stream piped input (e.g. Get-Content log.txt | claude -p 'summarize').
+        $terminalOptions = @('-i')
+    } elseif ($isPrint -or $outputPiped) {
+        # No stdin: print mode then starts immediately instead of waiting for EOF,
+        # and captured output is free of terminal control sequences.
+        $terminalOptions = @()
+    } else {
+        $terminalOptions = @('-it')
     }
 
-    docker run $terminalOption @claudeDockerArgs @args
+    if ($MyInvocation.ExpectingInput) {
+        $input | docker run @terminalOptions @claudeDockerArgs @args
+    } else {
+        docker run @terminalOptions @claudeDockerArgs @args
+    }
 }

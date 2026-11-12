@@ -1,4 +1,5 @@
 # Set these variables before dot-sourcing, or pass image and directory positionally.
+# Compatible with Windows PowerShell 5.1 and PowerShell 7.
 if ($null -eq $CLAUDE_IMAGE) {
     if ($args.Count -gt 0 -and $null -ne $args[0]) {
         $CLAUDE_IMAGE = $args[0]
@@ -10,14 +11,29 @@ if ($null -eq $BIND_MOUNT_DIRECTORY) {
     if ($args.Count -gt 1 -and $null -ne $args[1]) {
         $BIND_MOUNT_DIRECTORY = $args[1]
     } else {
-        $BIND_MOUNT_DIRECTORY = (Get-Location).Path
+        # ProviderPath resolves PSDrive names (e.g. a custom 'Work:' drive) to a real path.
+        $BIND_MOUNT_DIRECTORY = (Get-Location -PSProvider FileSystem).ProviderPath
     }
 }
 
 $claudeDockerArgs = @(
     "--rm"
     "--init"
-    "--privileged"
+    # In place of --privileged: what the private Docker daemon and bubblewrap sandboxes
+    # need, without host devices or other added capabilities.
+    "--cap-add=SYS_ADMIN"                   # mounts, namespaces, overlay storage, cgroups
+    "--cap-add=NET_ADMIN"                   # bridge networks, published ports, iptables
+    "--security-opt=seccomp=unconfined"     # default profile blocks pivot_root and keyctl
+    "--security-opt=apparmor=unconfined"    # AppArmor hosts: default profile blocks mounts
+    "--security-opt=systempaths=unconfined" # writable /proc/sys/net, unmasked /proc
+    "--cgroupns=private"                    # own cgroup tree for nested containers
+    # Forwarded only when set on the host; values never appear on the command line.
+    "-e"
+    "ANTHROPIC_API_KEY"
+    "-e"
+    "CLAUDE_CODE_OAUTH_TOKEN"
+    "-e"
+    "CLAUDE_PERMISSION_MODE"
     "--mount"
     "type=volume,target=/var/lib/docker"
     "--mount"
