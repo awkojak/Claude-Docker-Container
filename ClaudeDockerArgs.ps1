@@ -4,7 +4,7 @@ if ($null -eq $CLAUDE_IMAGE) {
     if ($args.Count -gt 0 -and $null -ne $args[0]) {
         $CLAUDE_IMAGE = $args[0]
     } else {
-        $CLAUDE_IMAGE = 'claude-alpine-docker:latest'
+        $CLAUDE_IMAGE = 'claude-alpine-rootless:latest'
     }
 }
 if ($null -eq $BIND_MOUNT_DIRECTORY) {
