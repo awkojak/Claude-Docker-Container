@@ -1,4 +1,4 @@
-$CLAUDE_LATEST_IMAGE = 'claude-alpine-docker:latest'
+$CLAUDE_LATEST_IMAGE = 'claude-alpine-rootless:latest'
 
 function build {
     param(
