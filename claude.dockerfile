@@ -7,15 +7,13 @@ ARG POWERSHELL_SHA256=F83DF6705EDAAE07DB970DCC6C34AD6583D33A2F6199F1B55CDC5354FB
 
 RUN apk upgrade --no-cache \
     && apk add --no-cache \
-        iproute2 nodejs npm ca-certificates git bash ripgrep shadow procps-ng bubblewrap socat dotnet10-sdk docker su-exec python3 py3-pip \
-        docker-cli-buildx docker-cli-compose github-cli jq make file patch unzip zip xz \
+        iproute2 nodejs npm ca-certificates git bash ripgrep shadow procps-ng bubblewrap socat dotnet10-sdk python3 py3-pip \
+        github-cli jq make file patch unzip zip xz \
         coreutils findutils grep sed gawk diffutils tar gzip \
     && npm install --global "@anthropic-ai/claude-code@${CLAUDE_VERSION}" \
     && npm cache clean --force \
     && useradd --create-home --home-dir /home/claude \
         --user-group --uid 1000 --shell /bin/bash claude \
-    && (getent group docker >/dev/null || groupadd docker) \
-    && usermod --append --groups docker claude \
     && mkdir -p /workspace /home/claude/.claude \
     && chmod 700 /home/claude/.claude \
     && chown -R claude:claude /workspace /home/claude \
@@ -65,18 +63,13 @@ WORKDIR /workspace
 RUN pwsh -NoLogo -NoProfile -NonInteractive \
     -Command '$ErrorActionPreference = "Stop"; $PSVersionTable.PSVersion.ToString()'
 
-# Check both the CLI and the ps query used for daemon process bookkeeping.
+# Verify the installed CLI and development tools.
 RUN claude --version \
     && dotnet --version \
-    && docker --version \
-    && docker buildx version \
-    && docker compose version \
-    && dockerd --version \
     && gh --version \
     && socat -V >/dev/null \
     && git config --get-all safe.directory \
     && ps -p "$$" -o stat= -o lstart=
 
 # Mount the SAME named volume at CLAUDE_CONFIG_DIR for login and subsequent runs.
-USER root
 ENTRYPOINT ["/usr/local/bin/claude-init.sh"]

@@ -1,8 +1,8 @@
-# Claude Code with Docker
+# Claude Code in Alpine
 
-This mirrors the sibling `Codex` container: Alpine 3.24.4, a private Docker daemon, a non-root CLI user (UID 1000), persistent CLI state, and a host directory mounted at `/workspace`. It includes Git, the GitHub CLI (`gh`), Bash, ripgrep, jq, make, GNU coreutils/findutils/grep/sed/awk/diff, Node.js/npm, Python/pip, the .NET 10 SDK, PowerShell 7.6.9, Docker with Buildx and Compose, bubblewrap and socat for Claude Code's sandbox, and the same limited passwordless `sudo apk add --no-cache ...` access for anything else.
+This mirrors the sibling `Codex` container: Alpine 3.24.4, a non-root CLI user (UID 1000), persistent CLI state, and a host directory mounted at `/workspace`. It includes Git, the GitHub CLI (`gh`), Bash, ripgrep, jq, make, GNU coreutils/findutils/grep/sed/awk/diff, Node.js/npm, Python/pip, the .NET 10 SDK, PowerShell 7.6.9, bubblewrap and socat for Claude Code's sandbox, and the same limited passwordless `sudo apk add --no-cache ...` access for anything else.
 
-The image targets **linux/amd64**. On Windows, use Docker Desktop with Linux containers. The container runs without `--privileged`; see [Container privileges](#container-privileges) for the narrower options it uses instead. The host scripts work with Windows PowerShell 5.1 and PowerShell 7.
+The image targets **linux/amd64**. On Windows, use Docker Desktop with Linux containers. The CLI and entrypoint run as UID 1000 with the default container permissions. The host scripts work with Windows PowerShell 5.1 and PowerShell 7.
 
 ## Build from Windows PowerShell
 
@@ -10,7 +10,7 @@ The image targets **linux/amd64**. On Windows, use Docker Desktop with Linux con
 & 'C:\Users\akolo\Workspace\DockerBuildScripts\Claude\build.ps1'
 ```
 
-The script resolves the Dockerfile and build context relative to itself, so you can run it from any directory. Like the Codex build, it pulls the base image, disables build caching, and creates `claude-alpine-docker:latest` plus `akolodziejczak1128/claude-alpine-docker:latest`. Additional positional arguments add tags; nothing is pushed:
+The script resolves the Dockerfile and build context relative to itself, so you can run it from any directory. Like the Codex build, it pulls the base image, disables build caching, and creates `$CODEX_IMAGE` from `image.env` plus `akolodziejczak1128/$CODEX_IMAGE`. Additional positional arguments add tags; nothing is pushed:
 
 ```powershell
 .\build.ps1 'myregistry/claude:dev'
@@ -38,10 +38,10 @@ Get-Content .\build.log | docker run -i @claudeDockerArgs -p 'why did this fail?
 
 Claude uses `auth login` rather than Codex's `login --device-auth`, and `-p` rather than `exec`. All arguments after the image name are passed unchanged to Claude Code.
 
-Set `$CLAUDE_IMAGE` and/or `$BIND_MOUNT_DIRECTORY` before dot-sourcing to override defaults, or pass the image and an absolute host directory as positional arguments:
+Set `$CODEX_IMAGE` (or the legacy `$CLAUDE_IMAGE`) and/or `$BIND_MOUNT_DIRECTORY` before dot-sourcing to override defaults, or pass the image and an absolute host directory as positional arguments:
 
 ```powershell
-. .\ClaudeDockerArgs.ps1 'claude-alpine-docker:latest' 'C:\Users\akolo\My Projects'
+. .\ClaudeDockerArgs.ps1 'myregistry/agent:dev' 'C:\Users\akolo\My Projects'
 ```
 
 As in the Codex helper, existing variables take precedence over positional arguments, and the generated array retains its selected directory until you load it again. To select a new directory, set `$BIND_MOUNT_DIRECTORY` and dot-source the helper again.
@@ -76,9 +76,8 @@ The argument array forwards these host variables when they are set (only the nam
 
 - `claude-state` is mounted at `/home/claude/.claude`. `CLAUDE_CONFIG_DIR` points there so credentials, settings, session history, and `.claude.json` persist together. Reuse this volume for login and later runs; it is separate from `codex-state`.
 - The bind mount exposes the selected host directory at `/workspace`. Its permissions must allow UID 1000 to write when changes are needed.
-- An anonymous volume at `/var/lib/docker` holds the private daemon's images and containers and is removed with the container. Use a named volume there if Docker data should persist.
 
-The entrypoint makes the container's cgroup filesystem writable and, with cgroup v2, moves its own processes into a child cgroup (as the official `docker:dind` image does), so nested containers can use resource limits such as `--memory`. It then starts `dockerd`, waits up to 60 seconds for readiness, checks that the Claude state directory is writable by UID 1000, then launches Claude as that user with umask `022`, so files Claude creates in `/workspace` are not restricted to mode `600`. Git is configured with `safe.directory = *` because Docker Desktop bind mounts often report a different owner, which otherwise makes Git refuse to work ("detected dubious ownership"). It forces the local Docker socket and ignores inherited `DOCKER_HOST` and `DOCKER_CONTEXT` values. It never mounts the host Docker socket.
+The entrypoint checks that `CLAUDE_CONFIG_DIR` is writable and launches Claude as UID 1000 with umask `022`. No Docker daemon or client is installed in this image. Git accepts bind-mounted repositories with different ownership.
 
 By default Claude uses the permission mode configured in `settings.json` inside `claude-state` (`permissions.defaultMode`), so a choice made there persists. To pick a mode for one run, set `CLAUDE_PERMISSION_MODE` (for example `bypassPermissions`, `acceptEdits`, `plan`, or `default`); the entrypoint passes it as `--permission-mode`:
 
@@ -94,19 +93,19 @@ The Dockerfile normalizes Windows CRLF line endings in `claude-init.sh`. PowerSh
 
 Claude-specific behavior follows the official [installation guide](https://code.claude.com/docs/en/setup), [CLI reference](https://code.claude.com/docs/en/cli-reference), [configuration directory documentation](https://code.claude.com/docs/en/claude-directory), and [environment variables reference](https://code.claude.com/docs/en/env-vars).
 
-## Container privileges
+## Branch and image selection
 
-The container does not use `--privileged`. Its private Docker daemon and bubblewrap sandboxes need only these options, which `ClaudeDockerArgs.ps1` passes:
+`image.env` is the single source of the default `CODEX_IMAGE`. Both `build.ps1`
+and the run helper load it through `ImageConfig.ps1`. Set `$CODEX_IMAGE` before
+invoking either script to override it; build positional arguments remain extra tags.
+The `main` branch contains the CLI without Docker installed inside the image;
+the `*-dockerd` branch contains a rootful daemon, and `*-rootless` contains a
+rootless daemon. Each branch has its own image tag. Build and run from the same checkout.
 
-| Option | Needed for |
-| --- | --- |
-| `--cap-add SYS_ADMIN` | Mounts, namespaces, overlay storage, and cgroups for nested containers and sandboxes. |
-| `--cap-add NET_ADMIN` | Bridge networks, published ports, and iptables rules. |
-| `--security-opt seccomp=unconfined` | runc and bubblewrap call `pivot_root` and `keyctl`, which Docker's default seccomp profile blocks. |
-| `--security-opt apparmor=unconfined` | AppArmor hosts such as Ubuntu, where the default profile blocks mounts. No effect on Docker Desktop. |
-| `--security-opt systempaths=unconfined` | Per-interface network settings under `/proc/sys/net` for nested containers, and an unmasked `/proc` for sandboxes on older kernels. |
-| `--cgroupns private` | A cgroup tree of the container's own for nested containers (the default with cgroup v2). |
+After changing branches, start a fresh PowerShell session or clear cached settings
+before loading the helper again:
 
-Compared with `--privileged`, the container no longer sees host devices (such as the Docker VM's disks, `/dev/mem`, and `/dev/kvm`), gets no other added capabilities, and keeps `/sys` read-only apart from its own cgroups. Nested containers are limited to the same capabilities: `docker run --privileged` inside still works but receives only those, and adding any other capability (for example `docker run --cap-add SYS_PTRACE`) fails. If a task needs one, add it to the outer command, for example `docker run -it --cap-add SYS_PTRACE @claudeDockerArgs`. The image also still works with `--privileged`.
-
-`SYS_ADMIN` without seccomp filtering is still powerful, so this setup is not a strong security boundary. Only mount directories and run tasks you trust.
+```powershell
+Remove-Variable CODEX_IMAGE, CLAUDE_IMAGE, BIND_MOUNT_DIRECTORY, claudeDockerArgs -ErrorAction SilentlyContinue
+. .\ClaudeDockerArgs.ps1
+```
