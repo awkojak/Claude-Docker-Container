@@ -10,7 +10,7 @@ The image targets **linux/amd64**. On Windows, use Docker Desktop with Linux con
 & 'C:\Users\akolo\Workspace\DockerBuildScripts\Claude\build.ps1'
 ```
 
-The script resolves the Dockerfile and build context relative to itself, so you can run it from any directory. Like the Codex build, it pulls the base image, disables build caching, and creates `claude-alpine-docker:latest` plus `akolodziejczak1128/claude-alpine-docker:latest`. Additional positional arguments add tags; nothing is pushed:
+The script resolves the Dockerfile and build context relative to itself, so you can run it from any directory. Like the Codex build, it pulls the base image, disables build caching, and creates `$CODEX_IMAGE` from `image.env` plus `akolodziejczak1128/$CODEX_IMAGE`. Additional positional arguments add tags; nothing is pushed:
 
 ```powershell
 .\build.ps1 'myregistry/claude:dev'
@@ -38,10 +38,10 @@ Get-Content .\build.log | docker run -i @claudeDockerArgs -p 'why did this fail?
 
 Claude uses `auth login` rather than Codex's `login --device-auth`, and `-p` rather than `exec`. All arguments after the image name are passed unchanged to Claude Code.
 
-Set `$CLAUDE_IMAGE` and/or `$BIND_MOUNT_DIRECTORY` before dot-sourcing to override defaults, or pass the image and an absolute host directory as positional arguments:
+Set `$CODEX_IMAGE` (or the legacy `$CLAUDE_IMAGE`) and/or `$BIND_MOUNT_DIRECTORY` before dot-sourcing to override defaults, or pass the image and an absolute host directory as positional arguments:
 
 ```powershell
-. .\ClaudeDockerArgs.ps1 'claude-alpine-docker:latest' 'C:\Users\akolo\My Projects'
+. .\ClaudeDockerArgs.ps1 'myregistry/agent:dev' 'C:\Users\akolo\My Projects'
 ```
 
 As in the Codex helper, existing variables take precedence over positional arguments, and the generated array retains its selected directory until you load it again. To select a new directory, set `$BIND_MOUNT_DIRECTORY` and dot-source the helper again.
@@ -110,3 +110,20 @@ The container does not use `--privileged`. Its private Docker daemon and bubblew
 Compared with `--privileged`, the container no longer sees host devices (such as the Docker VM's disks, `/dev/mem`, and `/dev/kvm`), gets no other added capabilities, and keeps `/sys` read-only apart from its own cgroups. Nested containers are limited to the same capabilities: `docker run --privileged` inside still works but receives only those, and adding any other capability (for example `docker run --cap-add SYS_PTRACE`) fails. If a task needs one, add it to the outer command, for example `docker run -it --cap-add SYS_PTRACE @claudeDockerArgs`. The image also still works with `--privileged`.
 
 `SYS_ADMIN` without seccomp filtering is still powerful, so this setup is not a strong security boundary. Only mount directories and run tasks you trust.
+
+## Branch and image selection
+
+`image.env` is the single source of the default `CODEX_IMAGE`. Both `build.ps1`
+and the run helper load it through `ImageConfig.ps1`. Set `$CODEX_IMAGE` before
+invoking either script to override it; build positional arguments remain extra tags.
+The `main` branch contains the CLI without Docker installed inside the image;
+the `*-dockerd` branch contains a rootful daemon, and `*-rootless` contains a
+rootless daemon. Each branch has its own image tag. Build and run from the same checkout.
+
+After changing branches, start a fresh PowerShell session or clear cached settings
+before loading the helper again:
+
+```powershell
+Remove-Variable CODEX_IMAGE, CLAUDE_IMAGE, BIND_MOUNT_DIRECTORY, claudeDockerArgs -ErrorAction SilentlyContinue
+. .\ClaudeDockerArgs.ps1
+```
