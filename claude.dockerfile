@@ -5,18 +5,21 @@ ARG POWERSHELL_VERSION=7.6.9
 # Update the checksum together with POWERSHELL_VERSION (official musl x64 asset).
 ARG POWERSHELL_SHA256=F83DF6705EDAAE07DB970DCC6C34AD6583D33A2F6199F1B55CDC5354FBB9001C
 
+# Docker runs rootless: rootlesskit, slirp4netns, and newuidmap/newgidmap (shadow-subids,
+# which use file capabilities instead of setuid) let it run entirely as UID 1000.
 RUN apk upgrade --no-cache \
     && apk add --no-cache \
-        iproute2 nodejs npm ca-certificates git bash ripgrep shadow procps-ng bubblewrap socat dotnet10-sdk docker su-exec python3 py3-pip \
+        iproute2 nodejs npm ca-certificates git bash ripgrep shadow procps-ng bubblewrap socat dotnet10-sdk python3 py3-pip \
+        docker docker-rootless-extras rootlesskit slirp4netns shadow-subids \
         docker-cli-buildx docker-cli-compose github-cli jq make file patch unzip zip xz \
         coreutils findutils grep sed gawk diffutils tar gzip \
     && npm install --global "@anthropic-ai/claude-code@${CLAUDE_VERSION}" \
     && npm cache clean --force \
     && useradd --create-home --home-dir /home/claude \
         --user-group --uid 1000 --shell /bin/bash claude \
-    && (getent group docker >/dev/null || groupadd docker) \
-    && usermod --append --groups docker claude \
-    && mkdir -p /workspace /home/claude/.claude \
+    && printf 'claude:100000:65536\n' > /etc/subuid \
+    && printf 'claude:100000:65536\n' > /etc/subgid \
+    && mkdir -p /workspace /home/claude/.claude /home/claude/.local/share/docker \
     && chmod 700 /home/claude/.claude \
     && chown -R claude:claude /workspace /home/claude \
     && git config --system --add safe.directory '*'
@@ -42,6 +45,8 @@ ENV HOME=/home/claude \
     USE_BUILTIN_RIPGREP=0 \
     DISABLE_AUTOUPDATER=1 \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
+    XDG_RUNTIME_DIR=/tmp/runtime-claude \
+    DOCKER_HOST=unix:///tmp/runtime-claude/docker.sock \
     PATH=/home/claude/.local/bin:$PATH
 
 COPY claude-init.sh /usr/local/bin/claude-init.sh
@@ -49,14 +54,12 @@ COPY claude-init.sh /usr/local/bin/claude-init.sh
 RUN sed -i 's/\r$//' /usr/local/bin/claude-init.sh \
     && chmod 755 /usr/local/bin/claude-init.sh
 
-USER root
-
-RUN apk add --no-cache sudo \
-    && mkdir -p /etc/sudoers.d \
-    && printf '%s\n' 'claude ALL=(ALL:ALL) NOPASSWD: /sbin/apk add --no-cache *' > /etc/sudoers.d/claude \
-    && chown root:root /etc/sudoers.d/claude \
-    && chmod 0440 /etc/sudoers.d/claude \
-    && visudo -c
+# Extra Alpine packages to bake in, since there is no sudo at runtime, e.g. "postgresql-client go"
+# (build.ps1 passes $env:EXTRA_APK_PACKAGES). Declared here so changing it reuses earlier layers.
+ARG EXTRA_APK_PACKAGES=""
+# Then drop every setuid/setgid bit, so nothing in the image can raise a process to root.
+RUN if [ -n "$EXTRA_APK_PACKAGES" ]; then apk add --no-cache $EXTRA_APK_PACKAGES; fi \
+    && find / -xdev -type f -perm /6000 -exec chmod a-s {} +
 
 USER claude
 WORKDIR /workspace
@@ -72,11 +75,15 @@ RUN claude --version \
     && docker buildx version \
     && docker compose version \
     && dockerd --version \
+    && rootlesskit --version \
+    && command -v dockerd-rootless && command -v slirp4netns \
+    && command -v newuidmap && command -v newgidmap \
     && gh --version \
     && socat -V >/dev/null \
     && git config --get-all safe.directory \
-    && ps -p "$$" -o stat= -o lstart=
+    && ps -p "$$" -o stat= -o lstart= \
+    && test -z "$(find / -xdev -type f -perm /6000 2>/dev/null)"
 
 # Mount the SAME named volume at CLAUDE_CONFIG_DIR for login and subsequent runs.
-USER root
+# The entrypoint runs as claude; the image has no root process at runtime.
 ENTRYPOINT ["/usr/local/bin/claude-init.sh"]
