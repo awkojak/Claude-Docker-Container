@@ -1,8 +1,8 @@
 # Set these variables before dot-sourcing, or pass image and directory positionally.
 # Compatible with Windows PowerShell 5.1 and PowerShell 7.
-if ([string]::IsNullOrWhiteSpace($CODEX_IMAGE) -and [string]::IsNullOrWhiteSpace($CLAUDE_IMAGE)) {
+if ([string]::IsNullOrWhiteSpace($CLAUDE_IMAGE)) {
     if ($args.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace($args[0])) {
-        $CODEX_IMAGE = $args[0]
+        $CLAUDE_IMAGE = $args[0]
     }
 }
 . (Join-Path $PSScriptRoot 'ImageConfig.ps1')
@@ -39,5 +39,5 @@ $claudeDockerArgs = @(
     "type=volume,source=claude-state,target=/home/claude/.claude"
     "--mount"
     "type=bind,source=${BIND_MOUNT_DIRECTORY},target=/workspace"
-    "${CODEX_IMAGE}"
+    "${CLAUDE_IMAGE}"
 )
