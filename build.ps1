@@ -24,12 +24,12 @@ function build {
     }
 }
 
-build $CODEX_IMAGE
+build $CLAUDE_IMAGE
 
-$tags = @("akolodziejczak1128/${CODEX_IMAGE}") + @($args)
+$tags = @("akolodziejczak1128/${CLAUDE_IMAGE}") + @($args)
 foreach ($tag in $tags) {
-    if ($tag.ToString() -ne $CODEX_IMAGE) {
-        docker tag $CODEX_IMAGE $tag.ToString()
+    if ($tag.ToString() -ne $CLAUDE_IMAGE) {
+        docker tag $CLAUDE_IMAGE $tag.ToString()
         if ($LASTEXITCODE -ne 0) {
             throw "Docker tag failed for '$tag' with exit code $LASTEXITCODE."
         }

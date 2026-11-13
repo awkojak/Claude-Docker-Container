@@ -10,7 +10,7 @@ The image targets **linux/amd64**. On Windows, use Docker Desktop with Linux con
 & 'C:\Users\akolo\Workspace\DockerBuildScripts\Claude\build.ps1'
 ```
 
-The script resolves the Dockerfile and build context relative to itself, so you can run it from any directory. Like the Codex build, it pulls the base image, disables build caching, and creates `$CODEX_IMAGE` from `image.env` plus `akolodziejczak1128/$CODEX_IMAGE`. Additional positional arguments add tags; nothing is pushed:
+The script resolves the Dockerfile and build context relative to itself, so you can run it from any directory. Like the Codex build, it pulls the base image, disables build caching, and creates `$CLAUDE_IMAGE` from `image.env` plus `akolodziejczak1128/$CLAUDE_IMAGE`. Additional positional arguments add tags; nothing is pushed:
 
 ```powershell
 .\build.ps1 'myregistry/claude:dev'
@@ -47,7 +47,7 @@ Get-Content .\build.log | docker run -i @claudeDockerArgs -p 'why did this fail?
 
 Claude uses `auth login` rather than Codex's `login --device-auth`, and `-p` rather than `exec`. All arguments after the image name are passed unchanged to Claude Code.
 
-Set `$CODEX_IMAGE` (or the legacy `$CLAUDE_IMAGE`) and/or `$BIND_MOUNT_DIRECTORY` before dot-sourcing to override defaults, or pass the image and an absolute host directory as positional arguments:
+Set `$CLAUDE_IMAGE` and/or `$BIND_MOUNT_DIRECTORY` before dot-sourcing to override defaults, or pass the image and an absolute host directory as positional arguments:
 
 ```powershell
 . .\ClaudeDockerArgs.ps1 'myregistry/agent:dev' 'C:\Users\akolo\My Projects'
@@ -125,8 +125,8 @@ Any container still shares the Docker VM's kernel, so a kernel vulnerability rem
 
 ## Branch and image selection
 
-`image.env` is the single source of the default `CODEX_IMAGE`. Both `build.ps1`
-and the run helper load it through `ImageConfig.ps1`. Set `$CODEX_IMAGE` before
+`image.env` is the single source of the default `CLAUDE_IMAGE`. Both `build.ps1`
+and the run helper load it through `ImageConfig.ps1`. Set `$CLAUDE_IMAGE` before
 invoking either script to override it; build positional arguments remain extra tags.
 The `main` branch contains the CLI without Docker installed inside the image;
 the `*-dockerd` branch contains a rootful daemon, and `*-rootless` contains a
@@ -136,7 +136,7 @@ After changing branches, start a fresh PowerShell session or clear cached settin
 before loading the helper again:
 
 ```powershell
-Remove-Variable CODEX_IMAGE, CLAUDE_IMAGE, BIND_MOUNT_DIRECTORY, claudeDockerArgs -ErrorAction SilentlyContinue
+Remove-Variable CLAUDE_IMAGE, BIND_MOUNT_DIRECTORY, claudeDockerArgs -ErrorAction SilentlyContinue
 . .\ClaudeDockerArgs.ps1
 ```
 
