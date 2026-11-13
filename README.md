@@ -1,6 +1,6 @@
 # Claude Code with Docker
 
-This mirrors the sibling `Codex` container: Alpine 3.24.4, a private Docker daemon, a non-root CLI user (UID 1000), persistent CLI state, and a host directory mounted at `/workspace`. It includes Git, the GitHub CLI (`gh`), Bash, ripgrep, jq, make, GNU coreutils/findutils/grep/sed/awk/diff, Node.js/npm, Python/pip, the .NET 10 SDK, PowerShell 7.6.9, Docker with Buildx and Compose, bubblewrap and socat for Claude Code's sandbox, and the same limited passwordless `sudo apk add --no-cache ...` access for anything else.
+This mirrors the sibling `Codex` container: Alpine 3.24.4, a private Docker daemon, a non-root CLI user (UID 1000), persistent CLI state, and a host directory mounted at `/workspace`. It includes Git, the GitHub CLI (`gh`), Bash, ripgrep, jq, make, GNU coreutils/findutils/grep/sed/awk/diff, Node.js/npm, Python/pip, the .NET 10 SDK, PowerShell 7.6.9, Docker with Buildx and Compose, and bubblewrap and socat for Claude Code's sandbox.
 
 The image targets **linux/amd64**. On Windows, use Docker Desktop with Linux containers. The container runs without `--privileged`; see [Container privileges](#container-privileges) for the narrower options it uses instead. The host scripts work with Windows PowerShell 5.1 and PowerShell 7.
 
@@ -127,3 +127,11 @@ before loading the helper again:
 Remove-Variable CLAUDE_IMAGE, BIND_MOUNT_DIRECTORY, claudeDockerArgs -ErrorAction SilentlyContinue
 . .\ClaudeDockerArgs.ps1
 ```
+
+## No runtime sudo
+
+Containment is a requirement for every build variant. Do not install `sudo` or
+add sudoers rules. Install required system packages in the Dockerfile during the
+image build. Builds strip setuid/setgid bits and fail if a `sudo` command,
+`/etc/sudoers`, or `/etc/sudoers.d` is present, including when introduced by extra
+packages. Rebuild the image to apply this policy to existing installations.

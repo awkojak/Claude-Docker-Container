@@ -49,14 +49,12 @@ COPY claude-init.sh /usr/local/bin/claude-init.sh
 RUN sed -i 's/\r$//' /usr/local/bin/claude-init.sh \
     && chmod 755 /usr/local/bin/claude-init.sh
 
-USER root
-
-RUN apk add --no-cache sudo \
-    && mkdir -p /etc/sudoers.d \
-    && printf '%s\n' 'claude ALL=(ALL:ALL) NOPASSWD: /sbin/apk add --no-cache *' > /etc/sudoers.d/claude \
-    && chown root:root /etc/sudoers.d/claude \
-    && chmod 0440 /etc/sudoers.d/claude \
-    && visudo -c
+# Containment: no runtime sudo, sudoers rules, or setuid/setgid executables.
+RUN find / -xdev -type f -perm /6000 -exec chmod a-s {} + \
+    && if command -v sudo >/dev/null 2>&1 || [ -e /etc/sudoers ] || [ -e /etc/sudoers.d ]; then \
+        echo 'Containment check failed: sudo and sudoers configuration are forbidden.' >&2; exit 1; \
+    fi \
+    && test -z "$(find / -xdev -type f -perm /6000)"
 
 USER claude
 WORKDIR /workspace
